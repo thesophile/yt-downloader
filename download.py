@@ -1,107 +1,196 @@
-import subprocess
+#!/usr/bin/env python3
+import subprocess, threading, os, re, queue
 import tkinter as tk
-from tkinter import messagebox, filedialog
-import os
-import threading
+from tkinter import filedialog, messagebox
+from tkinter import ttk
 
-def download_video():
-    video_url = url_entry.get()
-    quality = quality_var.get()
-    output_format = format_var.get()
-    download_folder = folder_var.get()
+ROOT_PAD = 12
 
-    if not video_url:
-        messagebox.showerror("Input Error", "Please enter the YouTube URL.")
-        return
+def ensure_dir(p):
+    os.makedirs(p, exist_ok=True)
 
-    if not download_folder:
-        messagebox.showerror("Input Error", "Please select a download location.")
-        return
-
-    # Ensure the folder exists
-    os.makedirs(download_folder, exist_ok=True)
-
-    # Path to your virtual environment's Python interpreter
+def build_command(url, mode, quality, out_format, audio_format, audio_quality, folder):
     venv_python = os.path.join("myenv", "bin", "python")
+    if not os.path.exists(venv_python):
+        venv_python = "python3"
+    out_t = os.path.join(folder, "%(title)s.%(ext)s")
+    if mode == "audio":
+        return [
+            venv_python, "-m", "yt_dlp",
+            "-f", "bestaudio",
+            "--extract-audio",
+            "--audio-format", audio_format,
+            "--audio-quality", audio_quality,
+            "-o", out_t,
+            url
+        ]
+    else:
+        return [
+            venv_python, "-m", "yt_dlp",
+            "-f", f"bestvideo[height<={quality}]+bestaudio/best",
+            "--merge-output-format", out_format,
+            "-o", out_t,
+            url
+        ]
 
-    # yt-dlp command to be executed in the virtual environment
-    command = [
-        venv_python, '-m', 'yt_dlp',
-        '-f', f'bestvideo[height={quality}]+bestaudio',
-        '--merge-output-format', output_format,
-        '-o', os.path.join(download_folder, '%(title)s.%(ext)s'),
-        video_url
-    ]
+def run_command_thread(cmd, q):
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
+        percent_re = re.compile(r"(\d{1,3}(?:\.\d+)?)%")
+        for line in p.stdout:
+            line = line.rstrip()
+            m = percent_re.search(line)
+            pct = float(m.group(1)) if m else None
+            q.put(("line", line, pct))
+        p.wait()
+        q.put(("done", p.returncode))
+    except Exception as e:
+        q.put(("error", str(e)))
 
-    def run_download():
-        try:
-            process = subprocess.Popen(
-                command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-            )
-            for line in process.stdout:
-                if "ETA" in line:
-                    update_progress(line)
-            process.wait()
-            if process.returncode == 0:
-                messagebox.showinfo("Success", "Download completed successfully!")
-            else:
-                messagebox.showerror("Error", "An error occurred during download.")
-        except subprocess.CalledProcessError as e:
-            messagebox.showerror("Error", f"An error occurred: {e}")
-
-    # Run download in a separate thread to prevent freezing the GUI
-    threading.Thread(target=run_download).start()
-
-def update_progress(progress_info):
-    progress_label.config(text=progress_info)
-
-def select_folder():
-    folder_selected = filedialog.askdirectory(initialdir=os.path.expanduser("~/Downloads/videos"))
-    if folder_selected:
-        folder_var.set(folder_selected)
-
-# Create the main window
 root = tk.Tk()
-root.title("YouTube Video Downloader")
+root.title("YT Downloader — Minimal & Polite")
+root.geometry("760x420")
+# safe font set: use tuple form and fallback if not available
+try:
+    root.option_add("*Font", ("Segoe UI", 10))
+except Exception:
+    try:
+        root.option_add("*Font", ("Helvetica", 10))
+    except Exception:
+        pass
 
-# YouTube URL label and entry
-url_label = tk.Label(root, text="YouTube URL:")
-url_label.pack(pady=5)
-url_entry = tk.Entry(root, width=50)
-url_entry.pack(pady=5)
+style = ttk.Style(root)
+try:
+    style.theme_use("clam")
+except Exception:
+    pass
 
-# Quality options
-quality_label = tk.Label(root, text="Select Quality:")
-quality_label.pack(pady=5)
-quality_var = tk.StringVar(value="720")  # Default value
-quality_options = ["360", "480", "720", "1080"]
-quality_menu = tk.OptionMenu(root, quality_var, *quality_options)
-quality_menu.pack(pady=5)
+# Try configure styles; fall back harmlessly if it fails
+use_header_style = False
+try:
+    style.configure("TFrame", background="#f6f7f9")
+    style.configure("TLabel", background="#f6f7f9")
+    style.configure("Header.TLabel", font=("Helvetica", 14, "bold"))
+    use_header_style = True
+except Exception:
+    use_header_style = False
 
-# Format options
-format_label = tk.Label(root, text="Select Output Format:")
-format_label.pack(pady=5)
-format_var = tk.StringVar(value="mkv")  # Default value
-format_options = ["mkv", "mp4", "webm"]
-format_menu = tk.OptionMenu(root, format_var, *format_options)
-format_menu.pack(pady=5)
+main = ttk.Frame(root, padding=ROOT_PAD)
+main.pack(fill="both", expand=True)
 
-# Folder selection
-folder_label = tk.Label(root, text="Select Download Folder:")
-folder_label.pack(pady=5)
-folder_var = tk.StringVar(value=os.path.expanduser("~/Downloads/videos"))  # Default folder
-folder_entry = tk.Entry(root, textvariable=folder_var, width=50)
-folder_entry.pack(pady=5)
-folder_button = tk.Button(root, text="Browse", command=select_folder)
-folder_button.pack(pady=5)
+# Header (safe)
+if use_header_style:
+    ttk.Label(main, text="YouTube Downloader", style="Header.TLabel").grid(row=0, column=0, sticky="w")
+else:
+    ttk.Label(main, text="YouTube Downloader", font=("Helvetica", 14, "bold")).grid(row=0, column=0, sticky="w")
 
-# Progress label
-progress_label = tk.Label(root, text="")
-progress_label.pack(pady=5)
+ttk.Label(main, text="URL:").grid(row=1, column=0, sticky="w", pady=(10,0))
+url_entry = ttk.Entry(main, width=70)
+url_entry.grid(row=2, column=0, columnspan=3, sticky="we", pady=6)
 
-# Download button
-download_button = tk.Button(root, text="Download", command=download_video)
-download_button.pack(pady=20)
+mode_var = tk.StringVar(value="")
+def on_mode_change():
+    m = mode_var.get()
+    if m == "video":
+        video_frame.grid()
+        audio_frame.grid_remove()
+    elif m == "audio":
+        audio_frame.grid()
+        video_frame.grid_remove()
+    else:
+        video_frame.grid_remove()
+        audio_frame.grid_remove()
 
-# Start the main GUI loop
+mframe = ttk.Frame(main)
+mframe.grid(row=3, column=0, sticky="w", pady=8)
+ttk.Radiobutton(mframe, text="Video", variable=mode_var, value="video", command=on_mode_change).pack(side="left", padx=6)
+ttk.Radiobutton(mframe, text="Audio only", variable=mode_var, value="audio", command=on_mode_change).pack(side="left", padx=6)
+
+folder_var = tk.StringVar(value=os.path.expanduser("~/Downloads/videos"))
+def choose_folder():
+    d = filedialog.askdirectory(initialdir=folder_var.get())
+    if d: folder_var.set(d)
+ttk.Label(main, text="Download folder:").grid(row=4, column=0, sticky="w")
+fentry = ttk.Entry(main, textvariable=folder_var, width=55)
+fentry.grid(row=5, column=0, sticky="w", pady=6)
+ttk.Button(main, text="Browse", command=choose_folder).grid(row=5, column=1, sticky="w", padx=6)
+
+video_frame = ttk.Frame(main, padding=(6,6,6,6), relief="ridge")
+video_frame.grid(row=6, column=0, columnspan=3, sticky="we", pady=8)
+video_frame.grid_remove()
+ttk.Label(video_frame, text="Video Quality:").grid(row=0, column=0, sticky="w")
+quality_var = tk.StringVar(value="720")
+ttk.OptionMenu(video_frame, quality_var, quality_var.get(), "360","480","720","1080").grid(row=0, column=1, sticky="w", padx=6)
+ttk.Label(video_frame, text="Format:").grid(row=0, column=2, sticky="w", padx=(12,0))
+format_var = tk.StringVar(value="mkv")
+ttk.OptionMenu(video_frame, format_var, format_var.get(), "mkv","mp4","webm").grid(row=0, column=3, sticky="w", padx=6)
+
+audio_frame = ttk.Frame(main, padding=(6,6,6,6), relief="ridge")
+audio_frame.grid(row=7, column=0, columnspan=3, sticky="we")
+audio_frame.grid_remove()
+ttk.Label(audio_frame, text="Audio Format:").grid(row=0, column=0, sticky="w")
+audio_format_var = tk.StringVar(value="mp3")
+ttk.OptionMenu(audio_frame, audio_format_var, audio_format_var.get(), "mp3","m4a","opus","wav").grid(row=0, column=1, sticky="w", padx=6)
+ttk.Label(audio_frame, text="Audio Quality (0=best):").grid(row=0, column=2, sticky="w", padx=(12,0))
+audio_quality_var = tk.StringVar(value="0")
+ttk.Entry(audio_frame, textvariable=audio_quality_var, width=5).grid(row=0, column=3, sticky="w", padx=6)
+
+progress_text = tk.StringVar(value="")
+progress_label = ttk.Label(main, textvariable=progress_text, wraplength=720, anchor="w", justify="left")
+progress_label.grid(row=8, column=0, columnspan=3, sticky="we", pady=(8,2))
+
+progress_bar = ttk.Progressbar(main, orient="horizontal", length=700, mode="determinate")
+progress_bar.grid(row=9, column=0, columnspan=3, sticky="we", pady=(2,8))
+
+def start_download():
+    url = url_entry.get().strip()
+    if not url:
+        messagebox.showerror("Input error", "Please enter a URL.")
+        return
+    mode = mode_var.get()
+    if not mode:
+        messagebox.showerror("Select mode", "Choose Video or Audio.")
+        return
+    folder = folder_var.get().strip()
+    if not folder:
+        messagebox.showerror("Folder", "Select a download folder.")
+        return
+    ensure_dir(folder)
+    cmd = build_command(url, mode, quality_var.get(), format_var.get(), audio_format_var.get(), audio_quality_var.get(), folder)
+    progress_text.set("Starting download...")
+    progress_bar["value"] = 0
+    global q
+    q = queue.Queue()
+    t = threading.Thread(target=run_command_thread, args=(cmd, q), daemon=True)
+    t.start()
+    root.after(150, poll_queue)
+
+ttk.Button(main, text="Download", command=start_download).grid(row=10, column=0, sticky="w", pady=6)
+main.columnconfigure(0, weight=1)
+
+def poll_queue():
+    try:
+        while True:
+            item = q.get_nowait()
+            if item[0] == "line":
+                _, line, pct = item
+                progress_text.set(line)
+                if pct is not None:
+                    try:
+                        progress_bar["value"] = max(0, min(100, float(pct)))
+                    except:
+                        pass
+            elif item[0] == "done":
+                code = item[1]
+                progress_bar["value"] = 100
+                if code == 0:
+                    messagebox.showinfo("Done", "Download completed.")
+                else:
+                    messagebox.showerror("Error", f"yt-dlp exited with code {code}. See messages above.")
+            elif item[0] == "error":
+                messagebox.showerror("Error", item[1])
+    except queue.Empty:
+        root.after(150, poll_queue)
+
+on_mode_change()
 root.mainloop()
