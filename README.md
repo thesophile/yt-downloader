@@ -12,7 +12,7 @@ A simple GUI-based application to download YouTube videos using yt-dlp. The appl
 
 ## Requirements
 
-- Python 3.x
+- Python 3.x or above
 - yt-dlp (YouTube-DL fork)
 - Tkinter (usually comes pre-installed with Python)
 
@@ -35,9 +35,9 @@ A simple GUI-based application to download YouTube videos using yt-dlp. The appl
    pip install yt-dlp
    ```
 
-5. Install any other required packages (if necessary):
+5. Install tkinter if you dont have it:
    ```
-   pip install tkinter  # If tkinter is not installed
+   sudo apt install python3-tk tk-dev
    ```
 
 ## Usage
