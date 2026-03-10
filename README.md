@@ -2,6 +2,9 @@
 
 A simple GUI-based application to download YouTube videos using yt-dlp. The application allows you to select the video quality, format, and download location, while displaying the download progress.
 
+<img width="760" height="458" alt="Screenshot from 2026-03-10 14-17-11" src="https://github.com/user-attachments/assets/1351c953-ccb3-4a42-8ffc-389f2d0165d3" />
+
+
 ## Features
 
 - Download videos from YouTube in specified quality (360p, 480p, 720p, 1080p).
