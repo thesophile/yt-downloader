@@ -5,6 +5,7 @@ from tkinter import filedialog, messagebox
 from tkinter import ttk
 
 ROOT_PAD = 12
+log_lines = []
 
 def ensure_dir(p):
     os.makedirs(p, exist_ok=True)
@@ -13,7 +14,7 @@ def build_command(url, mode, quality, out_format, audio_format, audio_quality, f
     venv_python = os.path.join("myenv", "bin", "python")
     if not os.path.exists(venv_python):
         venv_python = "python3"
-    out_t = os.path.join(folder, "%(title)s.%(ext)s")
+    out_t = os.path.join(folder, "%(title).60s [%(id)s].%(ext)s")
     if mode == "audio":
         return [
             venv_python, "-m", "yt_dlp",
@@ -35,20 +36,30 @@ def build_command(url, mode, quality, out_format, audio_format, audio_quality, f
 
 def run_command_thread(cmd, q):
     try:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
+        p = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
         percent_re = re.compile(r"(\d{1,3}(?:\.\d+)?)%")
+
         for line in p.stdout:
             line = line.rstrip()
             m = percent_re.search(line)
             pct = float(m.group(1)) if m else None
             q.put(("line", line, pct))
+
         p.wait()
         q.put(("done", p.returncode))
+
     except Exception as e:
         q.put(("error", str(e)))
 
 root = tk.Tk()
-root.title("YT Downloader — Minimal & Polite")
+root.title("YT Downloader")
 root.geometry("760x420")
 # safe font set: use tuple form and fallback if not available
 try:
@@ -106,7 +117,7 @@ mframe.grid(row=3, column=0, sticky="w", pady=8)
 ttk.Radiobutton(mframe, text="Video", variable=mode_var, value="video", command=on_mode_change).pack(side="left", padx=6)
 ttk.Radiobutton(mframe, text="Audio only", variable=mode_var, value="audio", command=on_mode_change).pack(side="left", padx=6)
 
-folder_var = tk.StringVar(value=os.path.expanduser("~/Downloads/videos"))
+folder_var = tk.StringVar(value=os.path.expanduser("~/Downloads"))
 def choose_folder():
     d = filedialog.askdirectory(initialdir=folder_var.get())
     if d: folder_var.set(d)
@@ -172,23 +183,40 @@ def poll_queue():
     try:
         while True:
             item = q.get_nowait()
+
             if item[0] == "line":
                 _, line, pct = item
+
+                log_lines.append(line)
+
+                # show last line in GUI
                 progress_text.set(line)
+
                 if pct is not None:
-                    try:
-                        progress_bar["value"] = max(0, min(100, float(pct)))
-                    except:
-                        pass
+                    progress_bar["value"] = max(0, min(100, pct))
+
             elif item[0] == "done":
                 code = item[1]
-                progress_bar["value"] = 100
+
                 if code == 0:
+                    progress_bar["value"] = 100
                     messagebox.showinfo("Done", "Download completed.")
                 else:
-                    messagebox.showerror("Error", f"yt-dlp exited with code {code}. See messages above.")
+                    error_line = None
+
+                    for line in reversed(log_lines):
+                        if "ERROR:" in line:
+                            error_line = line
+                            break
+
+                    if not error_line:
+                        error_line = log_lines[-1] if log_lines else "Unknown error"
+
+                    messagebox.showerror("Download Error", error_line)
+
             elif item[0] == "error":
                 messagebox.showerror("Error", item[1])
+
     except queue.Empty:
         root.after(150, poll_queue)
 
