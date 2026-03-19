@@ -38,7 +38,7 @@ A simple GUI-based application to download YouTube videos using yt-dlp. The appl
    pip install yt-dlp
    ```
 
-5. Install tkinter if you dont have it:
+5. Install tkinter if you dont have it. (Usually Python3 ships it by default)
    ```
    sudo apt install python3-tk tk-dev
    ```
@@ -46,19 +46,25 @@ A simple GUI-based application to download YouTube videos using yt-dlp. The appl
 ## Usage
 
 1. Run the application:
+   Either open the directory in terminal and type
    ```
    python3 download.py
    ```
+   or just double click the sh file.
+   Make it executable first time with 
+   ```
+   chmod +x download.sh
+   ```
 
-2. Enter the YouTube URL of the video you want to download.
+3. Enter the YouTube URL of the video you want to download.
 
-3. Select the desired video quality from the dropdown menu.
+4. Select the desired video quality from the dropdown menu.
 
-4. Choose the output format from the available options.
+5. Choose the output format from the available options.
 
-5. Specify the download location by clicking the "Browse" button (default is ~/Downloads/videos).
+6. Specify the download location by clicking the "Browse" button (default is ~/Downloads).
 
-6. Click the "Download" button to start the download. Progress will be displayed in real-time.
+7. Click the "Download" button to start the download. Progress will be displayed in real-time.
 
 ## Example Command
 
